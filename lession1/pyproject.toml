@@ -1,0 +1,16 @@
+[project]
+name = "cv-neie-cqu"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "einops>=0.8.1",
+  "matplotlib>=3.10.7",
+  "numpy>=2.3.5",
+  "opencv-python>=4.11.0.86",
+]
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
