@@ -1,16 +1,18 @@
-"""
-图像浏览器 - 三算法对比实现（最终版）
-修复Einops旋转方向，调整缩放因子
-"""
-
 import cv2
 import numpy as np
 import os
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, simpledialog
 from typing import Optional, Tuple, List, Any, Protocol
+import matplotlib.pyplot as plt
 import numpy.typing as npt
-from Algorithm.Algorithm import AlgorithmManager
+import time
+from Algorithm.Algorithm import (
+    ImageAlgorithm,
+    AdvancedImageAlgorithm,
+    OpenCVAlgorithm,
+    PurePythonAlgorithm,
+)
 
 
 # ========== 图像显示管理器 ==========
@@ -40,7 +42,6 @@ class ImageDisplayManager:
             cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL)
             cv2.resizeWindow(self.window_name, 1200, 600)
             self.window_created = True
-            print("✓ OpenCV窗口已创建")
 
     def resize_images_to_same_height(
         self, images: List[npt.NDArray]
@@ -49,10 +50,9 @@ class ImageDisplayManager:
         if not images or any(img.size == 0 for img in images):
             return images
 
-        # 获取最小高度
         min_height = min(img.shape[0] for img in images if img.size > 0)
-
         resized_images = []
+
         for img in images:
             if img.size == 0:
                 resized_images.append(img)
@@ -60,7 +60,6 @@ class ImageDisplayManager:
 
             height, width = img.shape[:2]
             if height != min_height:
-                # 等比例缩放
                 scale_factor = min_height / height
                 new_width = int(width * scale_factor)
                 resized = cv2.resize(
@@ -79,119 +78,34 @@ class ImageDisplayManager:
         if not images or any(img.size == 0 for img in images):
             return np.array([])
 
-        # 调整图像到相同高度
         resized_images = self.resize_images_to_same_height(images)
-
-        # 横向拼接
         concatenated = np.hstack(resized_images)
-
-        # 添加标题
-        result = self.add_titles(concatenated, resized_images, titles)
-        return result
-
-    def add_titles(
-        self,
-        concatenated_img: npt.NDArray,
-        images: List[npt.NDArray],
-        titles: List[str],
-    ) -> npt.NDArray:
-        """为每个子图添加标题"""
-        if concatenated_img.size == 0:
-            return concatenated_img
-
-        # 计算标题区域高度
-        title_height = 50
-        result_height = concatenated_img.shape[0] + title_height
-        result_width = concatenated_img.shape[1]
-
-        # 创建带标题区域的图像
-        result = np.ones((result_height, result_width, 3), dtype=np.uint8) * 255
-
-        # 将原图像放在下方
-        result[title_height:, :] = concatenated_img
-
-        # 添加标题
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        font_scale = 1.2
-        font_thickness = 2
-        font_color = (0, 0, 0)  # 黑色
-
-        current_x = 0
-        for i, (img, title) in enumerate(zip(images, titles)):
-            if img.size == 0:
-                continue
-
-            # 计算标题位置（居中）
-            text_size = cv2.getTextSize(title, font, font_scale, font_thickness)[0]
-            text_x = current_x + (img.shape[1] - text_size[0]) // 2
-            text_y = title_height - 15
-
-            cv2.putText(
-                result,
-                title,
-                (text_x, text_y),
-                font,
-                font_scale,
-                font_color,
-                font_thickness,
-            )
-
-            # 添加分隔线
-            if i < len(images) - 1:
-                line_x = current_x + img.shape[1]
-                cv2.line(
-                    result, (line_x, 0), (line_x, result_height), (200, 200, 200), 2
-                )
-
-            current_x += img.shape[1]
-
-        return result
+        return concatenated
 
     def show_images(self, images: List[npt.NDArray], operation_name: str) -> None:
         """在单个窗口中显示三张横向拼接的图像"""
-        print(f"\n=== 开始显示 {operation_name} 结果 ===")
-
-        # 确保窗口已创建
         self.create_window()
 
-        # 准备标题
-        titles = [
-            f"{name} - {operation_name}" for name in ["OpenCV", "Einops", "Pure Python"]
-        ]
-
-        # 拼接图像
+        titles = [f"{name} - {operation_name}" for name in ["OpenCV", "纯Python"]]
         concatenated = self.concatenate_images_horizontally(images, titles)
 
         if concatenated.size == 0:
-            print("✗ 无法拼接图像：图像为空")
             return
 
-        # 调整窗口大小适应图像
         img_height, img_width = concatenated.shape[:2]
-
-        # 计算适合屏幕的显示尺寸
         max_width = min(img_width, self.screen_width - 100)
         max_height = min(img_height, self.screen_height - 100)
 
-        # 等比例缩放
         scale_x = max_width / img_width
         scale_y = max_height / img_height
-        scale = min(scale_x, scale_y, 1.0)  # 不超过原图大小
+        scale = min(scale_x, scale_y, 1.0)
 
         display_width = int(img_width * scale)
         display_height = int(img_height * scale)
 
-        # 调整窗口大小
         cv2.resizeWindow(self.window_name, display_width, display_height)
-
-        # 显示图像
         cv2.imshow(self.window_name, concatenated)
-        cv2.waitKey(1)  # 强制刷新显示
-
-        print(f"✓ 图像拼接显示成功")
-        print(f"  总尺寸: {concatenated.shape[1]} x {concatenated.shape[0]}")
-        print(f"  显示尺寸: {display_width} x {display_height}")
-        print(f"  缩放比例: {scale:.2f}")
+        cv2.waitKey(1)
 
     def close_window(self) -> None:
         """关闭窗口"""
@@ -200,7 +114,6 @@ class ImageDisplayManager:
         except:
             pass
         self.window_created = False
-        print("✓ OpenCV窗口已关闭")
 
 
 # ========== 图像浏览器主类 ==========
@@ -218,9 +131,10 @@ class TripleImageBrowser:
         self.current_scale: float = 1.0
         self.image_loaded = False
 
-        # 管理器
-        self.algorithm_manager: AlgorithmManager = AlgorithmManager()
-        self.display_manager: ImageDisplayManager = ImageDisplayManager()
+        # 继续TripleImageBrowser主类的剩余部分
+        self.open_cv_algorithm = OpenCVAlgorithm()
+        self.pure_python_algorithm = PurePythonAlgorithm()
+        self.display_manager = ImageDisplayManager()
 
         # UI组件
         self.info_text: Optional[tk.Text] = None
@@ -237,7 +151,9 @@ class TripleImageBrowser:
 
         # 标题
         title_label = tk.Label(
-            main_frame, text="三算法对比图像浏览器", font=("Arial", 16, "bold")
+            main_frame,
+            text="三算法对比图像浏览器 - 作业2功能",
+            font=("Arial", 16, "bold"),
         )
         title_label.pack(pady=(0, 10))
 
@@ -260,11 +176,11 @@ class TripleImageBrowser:
             file_frame, text="重置图像", command=self.reset_image, width=12, height=2
         ).pack(side=tk.LEFT, padx=5)
 
-        # 图像操作按钮
-        operation_frame = tk.Frame(control_frame)
-        operation_frame.pack(fill=tk.X, pady=5)
+        # 基础图像操作按钮
+        basic_frame = tk.Frame(control_frame)
+        basic_frame.pack(fill=tk.X, pady=5)
 
-        operations = [
+        basic_operations = [
             ("旋转90°", self.rotate_90_all),
             ("放大2.0x", lambda: self.scale_image_all(2.0)),
             ("缩小0.5x", lambda: self.scale_image_all(0.5)),
@@ -272,13 +188,98 @@ class TripleImageBrowser:
             ("灰度化", self.grayscale_all),
         ]
 
-        for text, command in operations:
+        for text, command in basic_operations:
+            btn = tk.Button(basic_frame, text=text, command=command, width=10, height=2)
+            btn.pack(side=tk.LEFT, padx=2)
+            btn.config(state=tk.DISABLED)
+            setattr(
+                self,
+                f"{text.replace('°', '').replace('.', '').replace(' ', '')}_button",
+                btn,
+            )
+
+        # 几何变换按钮
+        geo_frame = tk.Frame(control_frame)
+        geo_frame.pack(fill=tk.X, pady=5)
+
+        tk.Label(geo_frame, text="几何变换:", font=("Arial", 9, "bold")).pack(
+            side=tk.LEFT, padx=5
+        )
+
+        geo_operations = [
+            ("X轴斜切", self.shear_x_all),
+            ("Y轴斜切", self.shear_y_all),
+        ]
+
+        for text, command in geo_operations:
+            btn = tk.Button(geo_frame, text=text, command=command, width=10, height=2)
+            btn.pack(side=tk.LEFT, padx=2)
+            btn.config(state=tk.DISABLED)
+            setattr(self, f"{text.replace(' ', '')}_button", btn)
+
+        # 图像增强按钮
+        enhance_frame = tk.Frame(control_frame)
+        enhance_frame.pack(fill=tk.X, pady=5)
+
+        tk.Label(enhance_frame, text="图像增强:", font=("Arial", 9, "bold")).pack(
+            side=tk.LEFT, padx=5
+        )
+
+        enhance_operations = [
+            ("显示直方图", self.show_histogram_all),
+            ("直方图均衡", self.histogram_equalization_all),
+            ("添加噪声", self.add_noise_all),
+            ("中值滤波", self.median_filter_all),
+        ]
+
+        for text, command in enhance_operations:
             btn = tk.Button(
-                operation_frame, text=text, command=command, width=10, height=2
+                enhance_frame, text=text, command=command, width=10, height=2
             )
             btn.pack(side=tk.LEFT, padx=2)
             btn.config(state=tk.DISABLED)
-            setattr(self, f"{text.replace('°', '').replace('.', '')}_button", btn)
+            setattr(self, f"{text.replace(' ', '')}_button", btn)
+
+        # 锐化按钮
+        sharpen_frame = tk.Frame(control_frame)
+        sharpen_frame.pack(fill=tk.X, pady=5)
+
+        tk.Label(sharpen_frame, text="图像锐化:", font=("Arial", 9, "bold")).pack(
+            side=tk.LEFT, padx=5
+        )
+
+        sharpen_operations = [
+            ("Roberts", lambda: self.sharpen_all("roberts")),
+            ("Sobel", lambda: self.sharpen_all("sobel")),
+            ("Laplacian", lambda: self.sharpen_all("laplacian")),
+        ]
+
+        for text, command in sharpen_operations:
+            btn = tk.Button(
+                sharpen_frame, text=text, command=command, width=10, height=2
+            )
+            btn.pack(side=tk.LEFT, padx=2)
+            btn.config(state=tk.DISABLED)
+            setattr(self, f"{text}_button", btn)
+
+        # 频域处理按钮
+        freq_frame = tk.Frame(control_frame)
+        freq_frame.pack(fill=tk.X, pady=5)
+
+        tk.Label(freq_frame, text="频域处理:", font=("Arial", 9, "bold")).pack(
+            side=tk.LEFT, padx=5
+        )
+
+        freq_operations = [
+            ("低通滤波", lambda: self.frequency_filter_all("low")),
+            ("高通滤波", lambda: self.frequency_filter_all("high")),
+        ]
+
+        for text, command in freq_operations:
+            btn = tk.Button(freq_frame, text=text, command=command, width=10, height=2)
+            btn.pack(side=tk.LEFT, padx=2)
+            btn.config(state=tk.DISABLED)
+            setattr(self, f"{text.replace(' ', '')}_button", btn)
 
         # 信息显示区域
         info_frame = tk.Frame(main_frame)
@@ -322,10 +323,14 @@ class TripleImageBrowser:
         self.status_label.pack()
 
         self.log("=" * 60)
-        self.log("三算法对比图像浏览器已启动")
-        self.log("算法实现: OpenCV, Einops, 纯Python")
-        self.log("显示方式: 单窗口横向拼接显示")
-        self.log("缩放因子: 放大2.0x, 缩小0.5x")
+        self.log("三算法对比图像浏览器 - 作业2功能")
+        self.log("=" * 60)
+        self.log("功能列表:")
+        self.log("1. 基础操作: 旋转、缩放、反色、灰度化")
+        self.log("2. 几何变换: 斜切变换")
+        self.log("3. 图像增强: 直方图均衡、噪声添加、中值滤波")
+        self.log("4. 图像锐化: Roberts, Sobel, Laplacian")
+        self.log("5. 频域处理: 低通滤波、高通滤波")
         self.log("=" * 60)
         self.log("请先点击'打开图像'按钮选择图像文件")
 
@@ -338,6 +343,17 @@ class TripleImageBrowser:
             "缩小05x_button",
             "反色处理_button",
             "灰度化_button",
+            "X轴斜切_button",
+            "Y轴斜切_button",
+            "显示直方图_button",
+            "直方图均衡_button",
+            "添加噪声_button",
+            "中值滤波_button",
+            "Roberts_button",
+            "Sobel_button",
+            "Laplacian_button",
+            "低通滤波_button",
+            "高通滤波_button",
         ]
 
         for btn_name in buttons:
@@ -360,7 +376,7 @@ class TripleImageBrowser:
         """打开单个图像文件"""
         file_path = filedialog.askopenfilename(
             title="选择图像文件",
-            filetypes=[("Image files", "*.jpg *.jpeg *.png *.bmp *.tiff")],
+            filetypes=[("Image files", "*.jpg *.jpeg *.png *.bmp *.tiff *.gif")],
         )
 
         if file_path:
@@ -391,9 +407,8 @@ class TripleImageBrowser:
     def show_original_images(self) -> None:
         """显示原始图像"""
         if self.image is not None and self.image_loaded:
-            # 创建三个相同的图像副本
-            images = [self.image.copy() for _ in range(3)]
-            self.display_manager.show_images(images, "original")
+            images = [self.image.copy(), self.image.copy()]
+            self.display_manager.show_images(images, "原始图像")
             self.log("✓ 原始图像已显示")
 
     def process_and_show(self, operation_name: str, process_func) -> None:
@@ -403,25 +418,34 @@ class TripleImageBrowser:
             return
 
         try:
-            # 获取三种算法的处理结果
-            results = process_func()
+            # 获取两种算法的处理结果
+            start_time = time.time()
+            opencv_result = process_func(self.open_cv_algorithm)
+            opencv_time = time.time() - start_time
 
-            # 确保每个算法都有有效的结果
+            start_time = time.time()
+            python_result = process_func(self.pure_python_algorithm)
+            python_time = time.time() - start_time
+
+            results = [opencv_result, python_result]
+
+            # 检查结果是否有效
             valid_results = []
-            for i, result in enumerate(results):
+            for i, (result, name) in enumerate(
+                zip(results, ["OpenCV算法", "纯Python算法"])
+            ):
                 if result is not None and result.size > 0:
                     valid_results.append(result)
-                    self.log(f"  {self.algorithm_manager.algorithm_names[i]}: 结果有效")
+                    self.log(f"  {name}: 处理成功")
                 else:
-                    # 如果结果无效，使用原始图像
                     valid_results.append(self.image.copy())
-                    self.log(
-                        f"  {self.algorithm_manager.algorithm_names[i]}: 使用原始图像"
-                    )
+                    self.log(f"  {name}: 使用原始图像")
 
             # 显示处理结果
             self.display_manager.show_images(valid_results, operation_name)
-            self.log(f"✓ {operation_name}处理完成，三种算法结果已拼接显示")
+            self.log(f"✓ {operation_name}处理完成")
+            self.log(f"  OpenCV耗时: {opencv_time:.4f}秒")
+            self.log(f"  纯Python耗时: {python_time:.4f}秒")
 
             # 更新当前图像为OpenCV算法的结果
             if len(valid_results) > 0 and valid_results[0].size > 0:
@@ -432,14 +456,11 @@ class TripleImageBrowser:
             messagebox.showerror("错误", f"{operation_name}处理失败: {e}")
 
     def rotate_90_all(self) -> None:
-        """使用三种方法旋转图像90度"""
-        self.process_and_show(
-            "rotate 90°",
-            lambda: self.algorithm_manager.process_rotation(self.image, self.log),
-        )
+        """旋转图像90度"""
+        self.process_and_show("旋转90°", lambda alg: alg.rotate_90(self.image))
 
     def scale_image_all(self, scale_factor: float) -> None:
-        """使用三种方法缩放图像"""
+        """缩放图像"""
         if not self.image_loaded or self.image is None:
             messagebox.showwarning("警告", "请先打开图像")
             return
@@ -448,24 +469,198 @@ class TripleImageBrowser:
         self.update_scale_display()
 
         self.process_and_show(
-            f"scale {scale_factor:.2f}x",
-            lambda: self.algorithm_manager.process_scaling(
-                self.image, scale_factor, self.log
-            ),
+            f"缩放{scale_factor:.2f}x",
+            lambda alg: alg.scale_image(self.image, scale_factor),
         )
 
     def invert_colors_all(self) -> None:
-        """使用三种方法进行反色处理"""
-        self.process_and_show(
-            "invert colors",
-            lambda: self.algorithm_manager.process_inversion(self.image, self.log),
-        )
+        """反色处理"""
+        self.process_and_show("反色处理", lambda alg: alg.invert_colors(self.image))
 
     def grayscale_all(self) -> None:
-        """使用三种方法进行灰度化处理"""
+        """灰度化处理"""
+        self.process_and_show("灰度化", lambda alg: alg.grayscale(self.image))
+
+    def shear_x_all(self) -> None:
+        """X轴斜切"""
+        if not self.image_loaded or self.image is None:
+            messagebox.showwarning("警告", "请先打开图像")
+            return
+
+        shear_factor = simpledialog.askfloat("斜切因子", "请输入X轴斜切因子:")
+        if shear_factor is None:
+            return
+
         self.process_and_show(
-            "grayscale",
-            lambda: self.algorithm_manager.process_grayscale(self.image, self.log),
+            f"X轴斜切({shear_factor:.2f})",
+            lambda alg: alg.shear_x(self.image, shear_factor),
+        )
+
+    def shear_y_all(self) -> None:
+        """Y轴斜切"""
+        if not self.image_loaded or self.image is None:
+            messagebox.showwarning("警告", "请先打开图像")
+            return
+
+        shear_factor = simpledialog.askfloat("斜切因子", "请输入Y轴斜切因子:")
+        if shear_factor is None:
+            return
+
+        self.process_and_show(
+            f"Y轴斜切({shear_factor:.2f})",
+            lambda alg: alg.shear_y(self.image, shear_factor),
+        )
+
+    def show_histogram_all(self) -> None:
+        """显示灰度直方图"""
+        if not self.image_loaded or self.image is None:
+            messagebox.showwarning("警告", "请先打开图像")
+            return
+
+        try:
+            # OpenCV算法计算直方图
+            hist_opencv, bins = self.open_cv_algorithm.calculate_histogram(self.image)
+
+            # 纯Python算法计算直方图
+            hist_python, bins = self.pure_python_algorithm.calculate_histogram(
+                self.image
+            )
+
+            # 绘制直方图
+            fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+            fig.suptitle("灰度直方图对比", fontsize=16)
+
+            axes[0].bar(bins, hist_opencv[: len(bins)], color="blue", alpha=0.7)
+            axes[0].set_title("OpenCV算法")
+            axes[0].set_xlabel("灰度值")
+            axes[0].set_ylabel("像素数量")
+            axes[0].grid(True, alpha=0.3)
+
+            axes[1].bar(bins, hist_python[: len(bins)], color="green", alpha=0.7)
+            axes[1].set_title("纯Python算法")
+            axes[1].set_xlabel("灰度值")
+            axes[1].set_ylabel("像素数量")
+            axes[1].grid(True, alpha=0.3)
+
+            plt.tight_layout()
+            plt.show()
+            self.log("✓ 灰度直方图显示成功")
+
+        except Exception as e:
+            self.log(f"✗ 显示灰度直方图失败: {e}")
+            messagebox.showerror("错误", f"显示灰度直方图失败: {e}")
+
+    def histogram_equalization_all(self) -> None:
+        """直方图均衡化"""
+        self.process_and_show(
+            "直方图均衡化", lambda alg: alg.histogram_equalization(self.image)
+        )
+
+    def add_noise_all(self) -> None:
+        """添加椒盐噪声"""
+        if not self.image_loaded or self.image is None:
+            messagebox.showwarning("警告", "请先打开图像")
+            return
+
+        amount = simpledialog.askfloat(
+            "噪声比例",
+            "请输入噪声比例(0.0-0.5):",
+            minvalue=0.0,
+            maxvalue=0.5,
+            initialvalue=0.05,
+        )
+        if amount is None:
+            return
+
+        self.process_and_show(
+            f"添加噪声({amount:.2f})",
+            lambda alg: alg.add_salt_pepper_noise(self.image, amount),
+        )
+
+    def median_filter_all(self) -> None:
+        """中值滤波"""
+        if not self.image_loaded or self.image is None:
+            messagebox.showwarning("警告", "请先打开图像")
+            return
+
+        kernel_size = simpledialog.askinteger(
+            "滤波器大小",
+            "请输入滤波器大小(奇数):",
+            minvalue=3,
+            maxvalue=15,
+            initialvalue=3,
+        )
+        if kernel_size is None or kernel_size % 2 == 0:
+            messagebox.showerror("错误", "滤波器大小必须为奇数")
+            return
+
+        self.process_and_show(
+            f"中值滤波({kernel_size}x{kernel_size})",
+            lambda alg: alg.median_filter(self.image, kernel_size),
+        )
+
+    def sharpen_all(self, method: str) -> None:
+        """图像锐化"""
+        if not self.image_loaded or self.image is None:
+            messagebox.showwarning("警告", "请先打开图像")
+            return
+
+        method_names = {
+            "roberts": "Roberts算子",
+            "sobel": "Sobel算子",
+            "laplacian": "Laplacian算子",
+        }
+        method_name = method_names.get(method, method)
+
+        self.process_and_show(
+            f"锐化-{method_name}", lambda alg: alg.sharpen(self.image, method)
+        )
+
+    def frequency_filter_all(self, mode: str) -> None:
+        """频域滤波"""
+        if not self.image_loaded or self.image is None:
+            messagebox.showwarning("警告", "请先打开图像")
+            return
+
+        mode_names = {"low": "低通", "high": "高通"}
+        mode_name = mode_names.get(mode, mode)
+
+        filter_type = simpledialog.askstring(
+            "滤波器类型", "请选择滤波器类型(ideal/gaussian/butterworth):"
+        )
+        if filter_type not in ["ideal", "gaussian", "butterworth"]:
+            messagebox.showerror(
+                "错误", "无效的滤波器类型，请输入ideal/gaussian/butterworth"
+            )
+            return
+
+        cutoff = simpledialog.askinteger(
+            "截止频率",
+            "请输入截止频率(像素):",
+            minvalue=1,
+            maxvalue=100,
+            initialvalue=20,
+        )
+        if cutoff is None:
+            return
+
+        order = 1
+        if filter_type == "butterworth":
+            order = simpledialog.askinteger(
+                "滤波器阶数",
+                "请输入巴特沃斯滤波器阶数:",
+                minvalue=1,
+                maxvalue=10,
+                initialvalue=2,
+            )
+            if order is None:
+                return
+
+        self.process_and_show(
+            f"{mode_name}滤波({filter_type}, 截止频率={cutoff})",
+            lambda alg: alg.frequency_filter(
+                self.image, mode, filter_type, cutoff, order
+            ),
         )
 
     def reset_image(self) -> None:
@@ -499,20 +694,27 @@ def main() -> None:
     try:
         import cv2
         import numpy as np
-        import einops
+        import matplotlib.pyplot as plt
 
         print("正在启动图像浏览器...")
-        print("提示: 请先打开图像文件，处理结果将在单个窗口中并排显示")
-        print("窗口标题: 三算法对比结果")
-        print("缩放因子: 放大2.0x, 缩小0.5x")
+        print("=" * 60)
+        print("功能列表:")
+        print("1. 基础操作: 旋转、缩放、反色、灰度化")
+        print("2. 几何变换: 斜切变换")
+        print("3. 图像增强: 直方图均衡、噪声添加、中值滤波")
+        print("4. 图像锐化: Roberts, Sobel, Laplacian")
+        print("5. 频域处理: 低通滤波、高通滤波")
+        print("=" * 60)
+        print("请先点击'打开图像'按钮选择图像文件")
 
         browser = TripleImageBrowser()
         browser.run()
 
     except ImportError as e:
         print(f"缺少依赖库: {e}")
-        print("请安装: pip install opencv-python numpy einops")
+        print("请安装: pip install opencv-python numpy matplotlib")
 
 
 if __name__ == "__main__":
+    print("start ")
     main()
