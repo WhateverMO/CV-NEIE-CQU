@@ -1,0 +1,17 @@
+CALIBRATION RESULTS
+==================================================
+
+Number of images used: 15
+Image size: (1512, 2016)
+Checkerboard pattern: (7, 5)
+Square size: 25.0 mm
+
+Camera Matrix:
+[[1.55830989e+03 0.00000000e+00 7.28811145e+02]
+ [0.00000000e+00 1.55300503e+03 1.03682024e+03]
+ [0.00000000e+00 0.00000000e+00 1.00000000e+00]]
+
+Distortion Coefficients:
+[[ 0.199865   -0.67644552  0.01013571 -0.00574653  0.96294554]]
+
+Reprojection Error (RMS): 3.8054 pixels
